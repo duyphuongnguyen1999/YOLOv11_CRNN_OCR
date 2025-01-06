@@ -1,0 +1,4 @@
+SEED = 0
+VAL_SIZE = 0.2
+TEST_SIZE = 0.125
+IS_SHUFFLE = True
