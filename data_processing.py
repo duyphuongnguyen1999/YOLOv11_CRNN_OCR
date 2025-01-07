@@ -6,28 +6,95 @@ from config import SEED, VAL_SIZE, TEST_SIZE, IS_SHUFFLE
 
 
 def extract_data_from_xml(root_dir):
+    """
+    Extracts data from a `words.xml` file located in the specified directory.
+
+    The XML structure is expected to be as follows:
+    ```
+    <tagset>
+        <image>
+            <imageName>path/to/image</imageName>
+            <resolution x="width" y="height" />
+            <taggedRectangles>
+                <taggedRectangle x="x-coordinate" y="y-coordinate" width="width" height="height">
+                    <tag>label</tag>
+                    <segmentation />
+                </taggedRectangle>
+                ...
+            </taggedRectangles>
+        </image>
+        ...
+    </tagset>
+    ```
+
+    Parameters:
+        root_dir (str): The root directory where the `words.xml` file is located.
+
+    Returns:
+        tuple: A tuple containing the following:
+            - img_paths (list of str): List of file paths to the images.
+            - img_sizes (list of tuple): List of image resolutions as (width, height).
+            - img_labels (list of list of str): Nested list where each sublist contains the labels
+              of tagged rectangles in the corresponding image.
+            - bboxes (list of list of list of float): Nested list where each sublist contains
+              bounding box coordinates for the corresponding image. Each bounding box is represented
+              as a list: [x, y, width, height].
+
+    Notes:
+        - Only bounding boxes with alphanumeric labels are included.
+        - Any label containing specific characters (e.g., "é", "ñ") is ignored.
+    """
+    # Construct the full path to the words.xml file
     xml_path = os.path.join(root_dir, "words.xml")
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
 
-    img_paths = []
-    img_sizes = []
-    img_labels = []
-    bounding_boxes = []
+    # Check if the XML file exists in the specified directory
+    if not os.path.exists(xml_path):
+        raise FileNotFoundError(f"File 'words.xml' not found in {root_dir}")
 
-    for img in root:
-        bbs_of_img = []
-        labels_of_img = []
+    # Parse the XML file and get the root element
+    tree = ET.parse(xml_path)  # Load XML from file
+    root = tree.getroot()  # Get the root element
 
-        for bbs in img.findall("taggedRectangles"):
-            for bb in bbs:
-                # Check non-alphabet and non-number
-                if not bb[0].text.isalnum():
+    # Initialize empty lists to store data
+    img_paths, img_sizes, img_labels, bounding_boxes = [], [], [], []
+
+    # Iterate through each <image> element in the XML
+    for image in root.findall("image"):
+        # Initialize empty lists to store data
+        bbs_of_img, labels_of_img = [], []
+
+        # Extract image name, resolution, and tagged rectangles (bounding box)
+        img_name = image.findtext("imageName")
+        resolution = image.find("resolution")
+        tagged_rectangles = image.find("taggedRectangles")
+
+        # Skip missing data images (imageName, resolution, taggedRectangles)
+        if not (img_name and resolution and tagged_rectangles):
+            continue
+
+        # Store the image file path and resolution (width, height)
+        img_paths.append(os.path.join(root_dir, img_name))
+        img_size = (int(resolution.attrib["x"]), int(resolution.attrib["y"]))
+        img_sizes.append(img_size)
+
+        # Iterate through each <taggedRectangles> element2
+        for bbs_list in tagged_rectangles:
+            # Iterate through each <taggedRectangle> in <taggedRectangle>
+            for bb in bbs_list:
+                tag = bb.find("tag")
+                # Ensure that each rectangle has a tag
+                if tag is None:
                     continue
-
-                if "é" in bb[0].text.lower() or "ñ" in bb[0].text.lower():
+                # # Only include alphanumeric tags
+                if tag.text.isalnum():
                     continue
+                # Exclude tags with specific characters
+                if "é" in tag.text.lower() or "ñ" in tag.text.lower():
+                    continue
+                # Extract the labels for each bounding box
+                labels_of_img.append(tag.text.lower())
 
+                # Extract the bounding box (x, y, width, height)
                 bbs_of_img.append(
                     [
                         float(bb.attrib["x"]),
@@ -36,13 +103,8 @@ def extract_data_from_xml(root_dir):
                         float(bb.attrib["height"]),
                     ]
                 )
-                labels_of_img.append(bb[0].text.lower())
 
         # Store
-        img_path = os.path.join(root_dir, img[0].text)
-        img_paths.append(img_path)
-        img_size = (int(img[1].attrib["x"]), int(img[1].attrib["y"]))
-        img_sizes.append(img_size)
         bounding_boxes.append(bbs_of_img)
         img_labels.append(labels_of_img)
 
