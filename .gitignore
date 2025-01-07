@@ -170,6 +170,8 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Flake8 configuration file
+.flake8
 
 # Untracked directories
 datasets/
