@@ -28,7 +28,8 @@ def extract_data_from_xml(root_dir):
     ```
 
     Parameters:
-        root_dir (str): The root directory where the `words.xml` file is located.
+        root_dir (str): The root directory where the `words.xml` file is
+        located.
 
     Returns:
         tuple: A tuple containing the following:
@@ -37,7 +38,8 @@ def extract_data_from_xml(root_dir):
             - img_labels (list of list of str): Nested list where each sublist contains the labels
               of tagged rectangles in the corresponding image.
             - bboxes (list of list of list of float): Nested list where each sublist contains
-              bounding box coordinates for the corresponding image. Each bounding box is represented
+              bounding box coordinates for the corresponding image.
+              Each bounding box is represented
               as a list: [x, y, width, height].
 
     Notes:
@@ -69,7 +71,7 @@ def extract_data_from_xml(root_dir):
         tagged_rectangles = image.find("taggedRectangles")
 
         # Skip missing data images (imageName, resolution, taggedRectangles)
-        if not (img_name and resolution and tagged_rectangles):
+        if img_name is None or resolution is None or tagged_rectangles is None:
             continue
 
         # Store the image file path and resolution (width, height)
@@ -82,33 +84,60 @@ def extract_data_from_xml(root_dir):
             # Iterate through each <taggedRectangle> in <taggedRectangle>
             for bb in bbs_list:
                 tag = bb.find("tag")
-                # Ensure that each rectangle has a tag
-                if tag is None:
-                    continue
-                # # Only include alphanumeric tags
-                if tag.text.isalnum():
-                    continue
-                # Exclude tags with specific characters
-                if "é" in tag.text.lower() or "ñ" in tag.text.lower():
-                    continue
-                # Extract the labels for each bounding box
-                labels_of_img.append(tag.text.lower())
+                if is_valid_tag(tag):
+                    # Extract the labels for each bounding box
+                    labels_of_img.append(tag.text.lower())
 
-                # Extract the bounding box (x, y, width, height)
-                bbs_of_img.append(
-                    [
-                        float(bb.attrib["x"]),
-                        float(bb.attrib["y"]),
-                        float(bb.attrib["width"]),
-                        float(bb.attrib["height"]),
-                    ]
-                )
+                    # Extract the bounding box (x, y, width, height)
+                    bbs_of_img.append(get_bounding_box(bb))
 
         # Store
         bounding_boxes.append(bbs_of_img)
         img_labels.append(labels_of_img)
 
     return img_paths, img_sizes, img_labels, bounding_boxes
+
+
+def is_valid_tag(tag):
+    """
+    Checks if the tag in the bounding box is valid
+    (alphanumeric and does not contain invalid characters).
+
+    Parameters:
+        tag (Element): The <tag> element in bounding box <taggedRectangle>.
+
+    Returns:
+        bool: True if the tag is valid, False otherwise.
+    """
+
+    return (
+        # Ensure that each rectangle has a tag
+        tag is not None
+        # Only include alphanumeric tags
+        and tag.text.isalnum()
+        # Exclude tags with specific characters
+        and "é" not in tag.text.lower()
+        and "ñ" not in tag.text.lower()
+    )
+
+
+def get_bounding_box(bb):
+    """
+    Extracts the bounding box coordinates (x, y, width, height) from the
+    <taggedRectangle>.
+
+    Parameters:
+        bb (Element): The tagged rectangle element.
+
+    Returns:
+        list: A list of bounding box coordinates [x, y, width, height].
+    """
+    return [
+        float(bb.attrib.get("x", 0)),
+        float(bb.attrib.get("y", 0)),
+        float(bb.attrib.get("width", 0)),
+        float(bb.attrib.get("height", 0)),
+    ]
 
 
 def convert_to_yolo_format(image_paths, image_sizes, bounding_boxes):
