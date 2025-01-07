@@ -141,31 +141,52 @@ def get_bounding_box(bb):
 
 
 def convert_to_yolo_format(image_paths, image_sizes, bounding_boxes):
+    """
+    Convert bounding boxes data into YOLO format for object detection tasks.
+
+    Parameters:
+        image_paths (list of str): List of image file paths.
+        image_sizes (list of tuple): List of image dimensions as (width, height).
+        bounding_boxes (list of list of tuples): Nested list of bounding boxes for each image.
+            Each bounding box is represented as (x, y, width, height).
+
+    Returns:
+        list of tuples: A list where each tuple contains:
+            - image_path (str): The path to the image.
+            - yolo_labels (list of str): List of YOLO formatted labels for each bounding box.
+    """
+    # Initialize an empty list to store YOLO formatted data
     yolo_data = []
 
+    # Loop through each image and its corresponding size and bounding boxes
     for image_path, image_size, bboxes in zip(image_paths, image_sizes, bounding_boxes):
+        # Get the width and height of the image
         image_width, image_height = image_size
 
+        # Initialize an empty list to store YOLO labels for this image
         yolo_labels = []
 
+        # Loop through each bounding box in the current image
         for bbox in bboxes:
             x, y, w, h = bbox
 
             # Calculate normalize bounding box coordinates
-            center_x = (x + w / 2) / image_width
-            center_y = (y + h / 2) / image_height
-            normalize_width = w / image_width
-            normalize_height = h / image_height
+            center_x = (x + w / 2) / image_width  # Normalize the center X coordinate
+            center_y = (y + h / 2) / image_height  # Normalize the center Y coordinate
+            normalize_width = w / image_width  # Normalize the width of the bounding box
+            normalize_height = (
+                h / image_height
+            )  # Normalize the height of the bounding box
 
-            # Because we only have 1 class, we set class_id to 0
-            class_id = 0
+            # Since we're assuming there's only 1 class (class_id = 0)
+            class_id = 0  # Set the class ID for the object (0 for the first class)
 
-            # Convert to YOLO format
+            # Convert the bounding box information to YOLO format string
             yolo_label = (
                 f"{class_id} {center_x} {center_y} {normalize_width} {normalize_height}"
             )
-            yolo_labels.append(yolo_label)
-
+            yolo_labels.append(yolo_label)  # Add the YOLO label to the list
+        # Append the image path and its corresponding YOLO labels to the final output list
         yolo_data.append((image_path, yolo_labels))
 
     return yolo_data
