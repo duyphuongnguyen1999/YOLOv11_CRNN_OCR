@@ -110,15 +110,19 @@ def is_valid_tag(tag):
         bool: True if the tag is valid, False otherwise.
     """
 
-    return (
+    if (
         # Ensure that each rectangle has a tag
         tag is not None
+        and
         # Only include alphanumeric tags
-        and tag.text.isalnum()
+        tag.text.isalnum()
+        and
         # Exclude tags with specific characters
-        and "é" not in tag.text.lower()
+        "é" not in tag.text.lower()
         and "ñ" not in tag.text.lower()
-    )
+    ):
+        return True
+    return False
 
 
 def get_bounding_box(bb):
@@ -183,7 +187,8 @@ def convert_to_yolo_format(image_paths, image_sizes, bounding_boxes):
 
             # Convert the bounding box information to YOLO format string
             yolo_label = (
-                f"{class_id} {center_x} {center_y} {normalize_width} {normalize_height}"
+                f"{class_id} {center_x} {center_y} {normalize_width} "
+                f"{normalize_height}"
             )
             yolo_labels.append(yolo_label)  # Add the YOLO label to the list
         # Append the image path and its corresponding YOLO labels to the final output list
@@ -193,25 +198,42 @@ def convert_to_yolo_format(image_paths, image_sizes, bounding_boxes):
 
 
 def save_data(data, src_img_dir, save_dir):
-    # Create folder if not exists
+    """
+    Save YOLO format data to the specified directory.
+
+    Parameters:
+        data (list of tuple): A list where each element is a tuple containing:
+            - image_path (str): Path to the image file relative to `src_img_dir`.
+            - yolo_labels (list of str): List of YOLO format labels for the image.
+        src_img_dir (str): Source directory containing the original image files.
+        save_dir (str): Target directory to save processed images and labels.
+
+    Returns:
+        None
+    """
+    # Create the target directory if it doesn't exist
     os.makedirs(save_dir, exist_ok=True)
 
-    # Make images and labels folder
+    # Create subdirectories for images and labels
     os.makedirs(os.path.join(save_dir, "images"), exist_ok=True)
     os.makedirs(os.path.join(save_dir, "labels"), exist_ok=True)
 
+    # Iterate over each image path and its corresponding YOLO labels
     for image_path, yolo_labels in data:
-        # Copy image to images folder
+        # Copy the image file to the 'images' subdirectory
         shutil.copy(
-            os.path.join(src_img_dir, image_path), os.path.join(save_dir, "images")
+            os.path.join(src_img_dir, image_path),  # Full path to the source image
+            os.path.join(save_dir, "images"),  # Destination 'images' folder
         )
 
-        # Save labels to lables folder
+        # Extract the base name of the image file (without extension)
         image_name = os.path.basename(image_path)
-        image_name = os.path.splitext(image_name)[0]
+        image_name = os.path.splitext(image_name)[0]  # Remove the file extension
 
+        # Create a text file for the labels corresponding to the image
         label_file_path = f"{image_name}.txt"
 
+        # Save YOLO labels to the text file in the 'labels' subdirectory
         with open(os.path.join(save_dir, "labels", label_file_path), "w") as f:
             for label in yolo_labels:
                 f.write(f"{label}\n")
