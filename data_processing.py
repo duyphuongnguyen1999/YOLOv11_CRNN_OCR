@@ -2,6 +2,7 @@ import os
 import shutil
 import xml.etree.ElementTree as ET
 from sklearn.model_selection import train_test_split
+from config import Config
 
 
 class DataProcessor:
@@ -11,11 +12,16 @@ class DataProcessor:
     Attributes:
         dataset_root_dir (str): The root directory containing the XML and image files.
         save_processed_data_dir (str): The directory to save processed data.
+        img_paths (list(str)): List of file paths to the images.
+        img_sizes (list(tuple)): List of image resolutions as (width, height).
+        img_labels (Nested list): Nested list where each sublist contains the labels of tagged rectangles in the corresponding image.
+        bounding_boxes  (Nested list): Nested list where each sublist contains bounding box coordinates for the corresponding image.
+        yolo_data (list(tuple)): A list where each tuple contains (image_path, yolo_labels)
     """
 
-    def __init__(self, dataset_root_dir, save_processed_data_dir):
-        self.dataset_root_dir = dataset_root_dir
-        self.save_processed_data_dir = save_processed_data_dir
+    def __init__(self, config: Config):
+        self.dataset_root_dir = config.dataset_root_dir
+        self.save_processed_data_dir = config.save_processed_data_dir
 
         # Automatically run data processing pipeline
         self.run_pipeline()
@@ -47,7 +53,7 @@ class DataProcessor:
         )
         print(f"Data saved to: {self.save_processed_data_dir}")
 
-    def _extract_data_from_xml(self, dataset_root_dir):
+    def _extract_data_from_xml(self, config: Config):
         """
         Extracts data from a `words.xml` file located in the specified directory.
 
@@ -88,11 +94,13 @@ class DataProcessor:
         """
 
         # Construct the full path to the words.xml file
-        xml_path = os.path.join(dataset_root_dir, "words.xml")
+        xml_path = os.path.join(config.dataset_root_dir, "words.xml")
 
         # Check if the XML file exists in the specified directory
         if not os.path.exists(xml_path):
-            raise FileNotFoundError(f"File 'words.xml' not found in {dataset_root_dir}")
+            raise FileNotFoundError(
+                f"File 'words.xml' not found in {config.dataset_root_dir}"
+            )
 
         # Parse the XML file and get the root element
         tree = ET.parse(xml_path)  # Load XML from file
@@ -234,7 +242,7 @@ class DataProcessor:
 
         return yolo_data
 
-    def _save_data(self, data, root_dir, save_dir):
+    def _save_data(self, data, config: Config):
         """
         Save YOLO format data to the specified directory.
 
@@ -248,6 +256,9 @@ class DataProcessor:
         Returns:
             None
         """
+        save_dir = config.save_processed_data_dir
+        root_dir = config.dataset_root_dir
+
         # Create the target directory if it doesn't exist
         os.makedirs(save_dir, exist_ok=True)
 
