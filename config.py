@@ -5,7 +5,7 @@ from typing import Optional
 class Config:
     def __init__(
         self,
-        dataset_root_dir: str = "datasets/SceneTrailTrain",
+        dataset_root_dir: str = "datasets/SceneTrialTrain",
         sava_processed_data_dir: str = "datasets/yolo_data",
         random_seed: Optional[int] = 0,
         val_size: Optional[float] = 0.2,

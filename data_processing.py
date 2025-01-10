@@ -3,6 +3,7 @@ import shutil
 import xml.etree.ElementTree as ET
 from sklearn.model_selection import train_test_split
 from config import Config
+import yaml
 
 
 class DataProcessor:
@@ -27,6 +28,7 @@ class DataProcessor:
         self.val_size = config.val_size
         self.test_size = config.test_size
         self.is_shuffle = config.is_shuffle
+        self.class_labels = ["text"]
 
         # Automatically run data processing pipeline if specified
         if run_pipeline:
@@ -317,5 +319,17 @@ class DataProcessor:
         self._save_data(train_data, config.dataset_root_dir, save_train_dir)
         self._save_data(val_data, config.dataset_root_dir, save_val_dir)
         self._save_data(test_data, config.dataset_root_dir, save_test_dir)
+
+        data_yaml = {
+            "path": config.save_processed_data_dir,
+            "train": save_train_dir,
+            "test": save_test_dir,
+            "val": save_val_dir,
+            "nc": 1,
+            "name": self.class_labels,
+        }
+        yolo_yaml_path = os.path.join(config.save_processed_data_dir, "data.yml")
+        with open(yolo_yaml_path, "w") as f:
+            yaml.dump(data_yaml, f, default_flow_style=False)
 
         return train_data, val_data, test_data
