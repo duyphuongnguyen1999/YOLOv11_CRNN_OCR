@@ -56,8 +56,8 @@ class DataProcessor:
         print("YOLO conversion completed.")
 
         # Step 3: Split into train-test-val datasets and save processed data
-        self.train_data, self.val_data, self.test_data = self._train_val_test_split(
-            self.yolo_data, self.config
+        self.yolo_yaml_path, self.train_data, self.val_data, self.test_data = (
+            self._train_val_test_split(self.yolo_data, self.config)
         )
         print(f"Data saved to: {self.save_processed_data_dir}")
 
@@ -332,4 +332,4 @@ class DataProcessor:
         with open(yolo_yaml_path, "w") as f:
             yaml.dump(data_yaml, f, default_flow_style=False)
 
-        return train_data, val_data, test_data
+        return yolo_yaml_path, train_data, val_data, test_data
