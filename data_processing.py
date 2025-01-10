@@ -106,7 +106,7 @@ class DataProcessor:
 
         # Check if the XML file exists in the specified directory
         if not os.path.exists(xml_path):
-            raise FileNotFoundError(f"File 'words.xml' not found in {dataset_root_dir}")
+            raise FileNotFoundError(f"File 'words.xml' not found in {xml_path}")
 
         # Parse the XML file and get the root element
         tree = ET.parse(xml_path)  # Load XML from file
@@ -130,7 +130,7 @@ class DataProcessor:
                 continue
 
             # Store the image file path and resolution (width, height)
-            img_paths.append(os.path.join(self.dataset_root_dir, img_name))
+            img_paths.append(img_name)
             img_size = (int(resolution.attrib["x"]), int(resolution.attrib["y"]))
             img_sizes.append(img_size)
 
