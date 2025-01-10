@@ -19,12 +19,18 @@ class DataProcessor:
         yolo_data (list(tuple)): A list where each tuple contains (image_path, yolo_labels)
     """
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, run_pipeline: bool = True):
+        self.config = config
         self.dataset_root_dir = config.dataset_root_dir
         self.save_processed_data_dir = config.save_processed_data_dir
+        self.random_seed = config.random_seed
+        self.val_size = config.val_size
+        self.test_size = config.test_size
+        self.is_shuffle = config.is_shuffle
 
-        # Automatically run data processing pipeline
-        self.run_pipeline()
+        # Automatically run data processing pipeline if specified
+        if run_pipeline:
+            self.run_pipeline()
 
     def run_pipeline(self):
         """
@@ -47,13 +53,13 @@ class DataProcessor:
         )
         print("YOLO conversion completed.")
 
-        # Step 3: Save processed data
-        self._save_data(
-            self.yolo_data, self.dataset_root_dir, self.save_processed_data_dir
+        # Step 3: Split into train-test-val datasets and save processed data
+        self.train_data, self.val_data, self.test_data = self._train_val_test_split(
+            self.yolo_data, self.config
         )
         print(f"Data saved to: {self.save_processed_data_dir}")
 
-    def _extract_data_from_xml(self, config: Config):
+    def _extract_data_from_xml(self, dataset_root_dir):
         """
         Extracts data from a `words.xml` file located in the specified directory.
 
@@ -94,13 +100,11 @@ class DataProcessor:
         """
 
         # Construct the full path to the words.xml file
-        xml_path = os.path.join(config.dataset_root_dir, "words.xml")
+        xml_path = os.path.join(dataset_root_dir, "words.xml")
 
         # Check if the XML file exists in the specified directory
         if not os.path.exists(xml_path):
-            raise FileNotFoundError(
-                f"File 'words.xml' not found in {config.dataset_root_dir}"
-            )
+            raise FileNotFoundError(f"File 'words.xml' not found in {dataset_root_dir}")
 
         # Parse the XML file and get the root element
         tree = ET.parse(xml_path)  # Load XML from file
@@ -172,7 +176,7 @@ class DataProcessor:
         )
 
     @staticmethod
-    def __get_bounding_box(bb):
+    def __get_bounding_box(tagged_rectangle):
         """
         Extracts the bounding box coordinates (x, y, width, height) from the
         <taggedRectangle>.
@@ -184,10 +188,10 @@ class DataProcessor:
             list: A list of bounding box coordinates [x, y, width, height].
         """
         return [
-            float(bb.attrib.get("x", 0)),
-            float(bb.attrib.get("y", 0)),
-            float(bb.attrib.get("width", 0)),
-            float(bb.attrib.get("height", 0)),
+            float(tagged_rectangle.attrib.get("x", 0)),
+            float(tagged_rectangle.attrib.get("y", 0)),
+            float(tagged_rectangle.attrib.get("width", 0)),
+            float(tagged_rectangle.attrib.get("height", 0)),
         ]
 
     def _convert_to_yolo_format(self, image_paths, image_sizes, bounding_boxes):
@@ -242,7 +246,7 @@ class DataProcessor:
 
         return yolo_data
 
-    def _save_data(self, data, config: Config):
+    def _save_data(self, data, root_dir, save_dir):
         """
         Save YOLO format data to the specified directory.
 
@@ -256,9 +260,6 @@ class DataProcessor:
         Returns:
             None
         """
-        save_dir = config.save_processed_data_dir
-        root_dir = config.dataset_root_dir
-
         # Create the target directory if it doesn't exist
         os.makedirs(save_dir, exist_ok=True)
 
@@ -285,3 +286,36 @@ class DataProcessor:
             with open(os.path.join(save_dir, "labels", label_file_path), "w") as f:
                 for label in yolo_labels:
                     f.write(f"{label}\n")
+
+    def _train_val_test_split(self, yolo_data, config: Config):
+        """
+        Split data into train, val, and test sets, and save them into specified directory.
+        Args:
+            yolo_data (list): YOLO formatted data.
+            config (Config): Configuration object.
+
+        Returns:
+            tuple: (train_data, val_data, test_data)
+        """
+        train_data, test_data = train_test_split(
+            yolo_data,
+            test_size=config.val_size,
+            random_state=config.random_seed,
+            shuffle=config.is_shuffle,
+        )
+        test_data, val_data = train_test_split(
+            test_data,
+            test_size=config.test_size,
+            random_state=config.random_seed,
+            shuffle=config.is_shuffle,
+        )
+
+        save_train_dir = os.path.join(config.save_processed_data_dir, "train")
+        save_val_dir = os.path.join(config.save_processed_data_dir, "val")
+        save_test_dir = os.path.join(config.save_processed_data_dir, "test")
+
+        self._save_data(train_data, config.dataset_root_dir, save_train_dir)
+        self._save_data(val_data, config.dataset_root_dir, save_val_dir)
+        self._save_data(test_data, config.dataset_root_dir, save_test_dir)
+
+        return train_data, val_data, test_data
