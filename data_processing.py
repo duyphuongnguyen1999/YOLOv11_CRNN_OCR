@@ -1,9 +1,11 @@
 import os
 import shutil
+import yaml
+import numpy as np
+from PIL import Image
 import xml.etree.ElementTree as ET
 from sklearn.model_selection import train_test_split
 from config import DataProcessorConfig
-import yaml
 
 
 class DataProcessor:
@@ -12,7 +14,7 @@ class DataProcessor:
 
     Attributes:
         dataset_root_dir (str): The root directory containing the XML and image files.
-        save_processed_data_dir (str): The directory to save processed data.
+        save_yolo_data_dir (str): The directory to save processed data.
         img_paths (list(str)): List of file paths to the images.
         img_sizes (list(tuple)): List of image resolutions as (width, height).
         img_labels (Nested list): Nested list where each sublist contains the labels of tagged rectangles in the corresponding image.
@@ -23,7 +25,8 @@ class DataProcessor:
     def __init__(self, config: DataProcessorConfig, run_pipeline: bool = True):
         self.config = config
         self.dataset_root_dir = config.dataset_root_dir
-        self.save_processed_data_dir = config.save_processed_data_dir
+        self.save_yolo_data_dir = config.save_yolo_data_dir
+        self.save_ocr_data_dir = config.save_ocr_data_dir
         self.random_seed = config.random_seed
         self.val_size = config.val_size
         self.test_size = config.test_size
@@ -55,11 +58,19 @@ class DataProcessor:
         )
         print("YOLO conversion completed.")
 
-        # # Step 3: Split into train-test-val datasets and save processed data
+        # Step 3: Split into train-test-val datasets and save processed data
         self.yolo_yaml_path, self.train_data, self.val_data, self.test_data = (
             self._train_val_test_split(self.yolo_data, self.config)
         )
-        print(f"Data saved to: {self.save_processed_data_dir}")
+        print(f"Data saved to: {self.save_yolo_data_dir}")
+
+        # Step 4: Create ORC dataset
+        self._split_bounding_boxes(
+            self.img_paths,
+            self.img_labels,
+            self.bounding_boxes,
+            self.save_ocr_data_dir,
+        )
 
     def _extract_data_from_xml(self, dataset_root_dir):
         """
@@ -314,9 +325,9 @@ class DataProcessor:
             shuffle=config.is_shuffle,
         )
 
-        save_train_dir = os.path.join(config.save_processed_data_dir, "train")
-        save_val_dir = os.path.join(config.save_processed_data_dir, "val")
-        save_test_dir = os.path.join(config.save_processed_data_dir, "test")
+        save_train_dir = os.path.join(config.save_yolo_data_dir, "train")
+        save_val_dir = os.path.join(config.save_yolo_data_dir, "val")
+        save_test_dir = os.path.join(config.save_yolo_data_dir, "test")
 
         self._save_data(train_data, config.dataset_root_dir, save_train_dir)
         self._save_data(val_data, config.dataset_root_dir, save_val_dir)
@@ -330,8 +341,46 @@ class DataProcessor:
             "nc": 1,
             "name": self.class_labels,
         }
-        yolo_yaml_path = os.path.join(config.save_processed_data_dir, "data.yml")
+        yolo_yaml_path = os.path.join(config.save_yolo_data_dir, "data.yml")
         with open(yolo_yaml_path, "w") as f:
             yaml.dump(data_yaml, f, default_flow_style=False)
 
         return yolo_yaml_path, train_data, val_data, test_data
+
+    def _split_bounding_boxes(self, img_paths, img_labels, bboxes, save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+
+        count = 0
+        labels = []  # List to store labels
+
+        for img_path, img_label, bbs in zip(img_paths, img_labels, bboxes):
+            img = Image.open(os.path.join(self.dataset_root_dir, img_path))
+
+            for label, bb in zip(img_label, bbs):
+                # Crop image
+                cropped_img = img.crop((bb[0], bb[1], bb[0] + bb[2], bb[1] + bb[3]))
+
+                # Filter out if 90% of the cropped image is black or white
+                if np.mean(cropped_img) < 35 or np.mean(cropped_img) > 220:
+                    continue
+
+                if cropped_img.size[0] < 10 or cropped_img.size[1] < 10:
+                    continue
+
+                # Save images
+                filename = f"{count:06d}.jpg"
+                new_img_path = os.path.join(save_dir, filename)
+                cropped_img.save(new_img_path)
+
+                label = new_img_path + "\t" + label
+
+                labels.append(label)  # Append label to the list
+
+                count += 1
+
+        print(f"Created {count} images")
+
+        # Write labels to a text file
+        with open(os.path.join(save_dir, "labels.txt"), "w") as f:
+            for label in labels:
+                f.write(f"{label}\n")
