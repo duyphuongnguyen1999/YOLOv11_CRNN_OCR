@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, Union
 import torch
 
 
@@ -28,7 +28,7 @@ class DetectorConfig:
         data: str = "datasets/yolo_data/data.yml",
         epochs: int = 100,
         imgsz: int = 640,
-        cache: bool = True,
+        cache: Union[str, bool] = "disk",
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         patience: int = 20,
         plots: bool = True,
