@@ -1,8 +1,9 @@
 import os
 from typing import Optional
+import torch
 
 
-class Config:
+class DataProcessorConfig:
     def __init__(
         self,
         dataset_root_dir: str = "datasets/SceneTrialTrain",
@@ -18,3 +19,25 @@ class Config:
         self.val_size = val_size
         self.test_size = test_size
         self.is_shuffle = is_shuffle
+
+
+class DetectorConfig:
+    def __init__(
+        self,
+        model_name: str = "yolo11n.pt",
+        data: str = "datasets/yolo_data/data.yml",
+        epochs: int = 100,
+        imgsz: int = 640,
+        cache: bool = True,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        patience: int = 20,
+        plots: bool = True,
+    ):
+        self.model_name = model_name
+        self.data = os.path.normpath(data)
+        self.epochs = epochs
+        self.imgsz = imgsz
+        self.cache = cache
+        self.device = device
+        self.patience = patience
+        self.plots = plots
