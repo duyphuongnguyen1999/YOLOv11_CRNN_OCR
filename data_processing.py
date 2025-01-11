@@ -56,10 +56,10 @@ class DataProcessor:
         print("YOLO conversion completed.")
 
         # # Step 3: Split into train-test-val datasets and save processed data
-        # self.yolo_yaml_path, self.train_data, self.val_data, self.test_data = (
-        #     self._train_val_test_split(self.yolo_data, self.config)
-        # )
-        # print(f"Data saved to: {self.save_processed_data_dir}")
+        self.yolo_yaml_path, self.train_data, self.val_data, self.test_data = (
+            self._train_val_test_split(self.yolo_data, self.config)
+        )
+        print(f"Data saved to: {self.save_processed_data_dir}")
 
     def _extract_data_from_xml(self, dataset_root_dir):
         """
@@ -287,7 +287,7 @@ class DataProcessor:
             label_file_path = os.path.join(save_dir, "labels", f"{image_name}.txt")
 
             # Save YOLO labels to the text file in the 'labels' subdirectory
-            with open(label_file_path) as f:
+            with open(label_file_path, "w") as f:
                 for label in yolo_labels:
                     f.write(f"{label}\n")
 
