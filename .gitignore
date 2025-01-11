@@ -175,3 +175,7 @@ cython_debug/
 
 # Untracked directories
 datasets/
+runs/
+
+# Pickles
+*.pt
