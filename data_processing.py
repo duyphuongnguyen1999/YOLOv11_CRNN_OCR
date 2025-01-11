@@ -2,7 +2,7 @@ import os
 import shutil
 import xml.etree.ElementTree as ET
 from sklearn.model_selection import train_test_split
-from config import Config
+from config import DataProcessorConfig
 import yaml
 
 
@@ -20,7 +20,7 @@ class DataProcessor:
         yolo_data (list(tuple)): A list where each tuple contains (image_path, yolo_labels)
     """
 
-    def __init__(self, config: Config, run_pipeline: bool = True):
+    def __init__(self, config: DataProcessorConfig, run_pipeline: bool = True):
         self.config = config
         self.dataset_root_dir = config.dataset_root_dir
         self.save_processed_data_dir = config.save_processed_data_dir
@@ -55,11 +55,11 @@ class DataProcessor:
         )
         print("YOLO conversion completed.")
 
-        # Step 3: Split into train-test-val datasets and save processed data
-        self.yolo_yaml_path, self.train_data, self.val_data, self.test_data = (
-            self._train_val_test_split(self.yolo_data, self.config)
-        )
-        print(f"Data saved to: {self.save_processed_data_dir}")
+        # # Step 3: Split into train-test-val datasets and save processed data
+        # self.yolo_yaml_path, self.train_data, self.val_data, self.test_data = (
+        #     self._train_val_test_split(self.yolo_data, self.config)
+        # )
+        # print(f"Data saved to: {self.save_processed_data_dir}")
 
     def _extract_data_from_xml(self, dataset_root_dir):
         """
@@ -135,16 +135,14 @@ class DataProcessor:
             img_sizes.append(img_size)
 
             # Iterate through each <taggedRectangles> element
-            for bbs_list in tagged_rectangles:
-                # Iterate through each <taggedRectangle> in <taggedRectangle>
-                for bb in bbs_list:
-                    tag = bb.find("tag")
-                    if self.__is_valid_tag(tag):
-                        # Extract the labels for each bounding box
-                        labels_of_img.append(tag.text.lower())
+            for bb in tagged_rectangles:
+                tag = bb.find("tag")
+                if self.__is_valid_tag(tag):
+                    # Extract the labels for each bounding box
+                    labels_of_img.append(tag.text.lower())
 
-                        # Extract the bounding box (x, y, width, height)
-                        bbs_of_img.append(self.__get_bounding_box(bb))
+                    # Extract the bounding box (x, y, width, height)
+                    bbs_of_img.append(self.__get_bounding_box(bb))
 
             # Store
             bounding_boxes.append(bbs_of_img)
@@ -272,24 +270,28 @@ class DataProcessor:
         # Iterate over each image path and its corresponding YOLO labels
         for image_path, yolo_labels in data:
             # Copy the image file to the 'images' subdirectory
-            shutil.copy(
-                os.path.join(root_dir, image_path),  # Full path to the source image
-                os.path.join(save_dir, "images"),  # Destination 'images' folder
-            )
+            try:
+                shutil.copy(
+                    os.path.join(root_dir, image_path),  # Full path to the source image
+                    os.path.join(save_dir, "images"),  # Destination 'images' folder
+                )
+            except FileNotFoundError as e:
+                print(f"Error: File not found - {e}")
+                continue
 
             # Extract the base name of the image file (without extension)
             image_name = os.path.basename(image_path)
             image_name = os.path.splitext(image_name)[0]  # Remove the file extension
 
             # Create a text file for the labels corresponding to the image
-            label_file_path = f"{image_name}.txt"
+            label_file_path = os.path.join(save_dir, "labels", f"{image_name}.txt")
 
             # Save YOLO labels to the text file in the 'labels' subdirectory
-            with open(os.path.join(save_dir, "labels", label_file_path), "w") as f:
+            with open(label_file_path) as f:
                 for label in yolo_labels:
                     f.write(f"{label}\n")
 
-    def _train_val_test_split(self, yolo_data, config: Config):
+    def _train_val_test_split(self, yolo_data, config: DataProcessorConfig):
         """
         Split data into train, val, and test sets, and save them into specified directory.
         Args:
@@ -321,10 +323,10 @@ class DataProcessor:
         self._save_data(test_data, config.dataset_root_dir, save_test_dir)
 
         data_yaml = {
-            "path": config.save_processed_data_dir,
-            "train": save_train_dir,
-            "test": save_test_dir,
-            "val": save_val_dir,
+            "path": "yolo_data/",
+            "train": "train/images",
+            "test": "test/images",
+            "val": "val/images",
             "nc": 1,
             "name": self.class_labels,
         }
