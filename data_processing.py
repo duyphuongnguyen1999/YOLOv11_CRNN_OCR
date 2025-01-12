@@ -47,14 +47,14 @@ class DataProcessor:
         print("Starting data processing pipeline...")
 
         # Step 1: Extract data
-        self.img_paths, self.img_sizes, self.img_labels, self.bounding_boxes = (
+        self.src_img_paths, self.img_sizes, self.img_labels, self.bounding_boxes = (
             self._extract_data_from_xml(self.dataset_root_dir)
         )
         print("Data extraction completed.")
 
         # Step 2: Convert to YOLO format
         self.yolo_data = self._convert_to_yolo_format(
-            self.img_paths, self.img_sizes, self.bounding_boxes
+            self.src_img_paths, self.img_sizes, self.bounding_boxes
         )
         print("YOLO conversion completed.")
 
@@ -66,10 +66,15 @@ class DataProcessor:
 
         # Step 4: Create ORC dataset
         self._split_bounding_boxes(
-            self.img_paths,
+            self.src_img_paths,
             self.img_labels,
             self.bounding_boxes,
             self.save_ocr_data_dir,
+        )
+
+        # Step 5: Create OCR vocabulary
+        self.ocr_vocab, self.ocr_vocab_size = self._build_vocabulary(
+            self.ocr_labels, self.save_ocr_data_dir
         )
 
     def _extract_data_from_xml(self, dataset_root_dir):
@@ -352,6 +357,8 @@ class DataProcessor:
 
         count = 0
         labels = []  # List to store labels
+        self.ocr_labels = []
+        self.ocr_img_paths = []
 
         for img_path, img_label, bbs in zip(img_paths, img_labels, bboxes):
             img = Image.open(os.path.join(self.dataset_root_dir, img_path))
@@ -371,7 +378,9 @@ class DataProcessor:
                 filename = f"{count:06d}.jpg"
                 new_img_path = os.path.join(save_dir, filename)
                 cropped_img.save(new_img_path)
+                self.ocr_img_paths.append(new_img_path)
 
+                self.ocr_labels.append(label)
                 label = new_img_path + "\t" + label
 
                 labels.append(label)  # Append label to the list
@@ -384,3 +393,32 @@ class DataProcessor:
         with open(os.path.join(save_dir, "labels.txt"), "w") as f:
             for label in labels:
                 f.write(f"{label}\n")
+
+    def _build_vocabulary(self, labels, save_voceb_dir):
+        blank_char = "-"
+        vocab = {blank_char: 0}
+
+        index = 1
+
+        unique_letters = set()
+
+        # Iterate through all label in labels
+        for label in labels:
+            # Split label into letter
+            label_letters = list(label.lower())
+            unique_letters.update(label_letters)
+
+        for letter in sorted(unique_letters):
+            vocab[letter] = index
+            index += 1
+
+        vocab_size = len(vocab)
+
+        # Write vocabulary into a text file
+        with open(os.path.join(save_voceb_dir, "ocr_vocab.txt"), "w") as f:
+            for letter, index in vocab.items():
+                f.write(f"{index}\t{letter}\n")
+
+        print(f"Build vocabulary successfully. Vocab size = {vocab_size}")
+
+        return vocab, vocab_size
