@@ -1,6 +1,7 @@
 import os
 import shutil
 import yaml
+import torch
 import numpy as np
 from PIL import Image
 import xml.etree.ElementTree as ET
@@ -9,7 +10,11 @@ from config import DataProcessorConfig
 
 
 class DataProcessor:
-    pass
+    def __init__(self, config: DataProcessorConfig):
+        self.config = config
+        self.data_loader = DataLoader(config=config)
+        self.yolo_data_processor = YOLODataProcessor(config)
+        self.ocr_data_processor = OCRDataProcessor(config)
 
 
 class DataLoader:
@@ -24,22 +29,13 @@ class DataLoader:
         bounding_boxes  (Nested list): Nested list where each sublist contains bounding box coordinates for the corresponding image.
     """
 
-    def __init__(self, config: DataProcessorConfig, run_pipeline: bool = True):
+    def __init__(self, config: DataProcessorConfig):
         self.config = config
         self.dataset_root_dir = config.dataset_root_dir
         self.class_labels = ["text"]
-
-        # Automatically run data processing pipeline if specified
-        if run_pipeline:
-            self.run_pipeline()
-
-    def run_pipeline(self):
-        print("Starting data processing pipeline...")
-        # Step 1: Extract data from XML
         self.src_img_paths, self.img_sizes, self.img_labels, self.bounding_boxes = (
             self._extract_data_from_xml(self.dataset_root_dir)
         )
-        print("Data extraction completed.")
 
     def _extract_data_from_xml(self, dataset_root_dir):
         """
@@ -175,16 +171,14 @@ class DataLoader:
         ]
 
 
-class YoloDataProcessor(DataLoader):
-    def __init__(self, run_pipeline: bool = True):
-        super(self).__init__()
+class YOLODataProcessor(DataLoader):
+    def __init__(self, config: DataProcessorConfig):
+        super().__init__(config)
         self.save_yolo_data_dir = self.config.save_yolo_data_dir
         self.val_size = self.config.val_size
         self.test_size = self.config.test_size
         self.is_shuffle = self.config.is_shuffle
-
-        if run_pipeline:
-            self.run_pipeline()
+        self.run_pipeline()
 
     def run_pipeline(self):
         """
@@ -193,27 +187,25 @@ class YoloDataProcessor(DataLoader):
         - Converts data to YOLO format.
         - Saves the processed data.
         """
-        # Step 1: Extract data from XML
-        # Outputs: self.src_img_paths, self.img_labels, self.bounding_boxes
-        super().run_pipeline()
-
-        # Step 2: Convert to YOLO format
+        # Step 1: Convert to YOLO format
         self.yolo_data = self._convert_to_yolo_format(
             self.src_img_paths, self.img_sizes, self.bounding_boxes
         )
-        print("YOLO conversion completed.")
 
-        # Step 3: Split into train-test-val datasets and save processed data
+        # Step 2: Split into train-test-val datasets and save processed data
         self.yolo_yaml_path, self.train_data, self.val_data, self.test_data = (
             self._train_val_test_split(self.yolo_data, self.config)
         )
-        print(f"Data saved to: {self.save_yolo_data_dir}")
+        print(
+            "Complete converting data to YOLO format."
+            f"Data saved to: {self.config.save_yolo_data_dir}"
+        )
 
     def _convert_to_yolo_format(self, image_paths, image_sizes, bounding_boxes):
         """
         Convert bounding boxes data into YOLO format for object detection tasks.
 
-        Parameters:
+        Parameters:s
             image_paths (list of str): List of image file paths.
             image_sizes (list of tuple): List of image dimensions as (width, height).
             bounding_boxes (list of list of tuples): Nested list of bounding boxes for each image.
@@ -353,9 +345,10 @@ class YoloDataProcessor(DataLoader):
 
 
 class OCRDataProcessor(DataLoader):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, config: DataProcessorConfig):
+        super().__init__(config)
         self.save_ocr_data_dir = self.config.save_ocr_data_dir
+        self.run_pipeline()
 
     def run_pipeline(self):
         """
@@ -364,11 +357,7 @@ class OCRDataProcessor(DataLoader):
         - Converts data to CRNN format.
         - Saves the processed data.
         """
-        # Step 1: Extract data from XML
-        # Outputs: self.src_img_paths, self.img_labels, self.bounding_boxes
-        super().run_pipeline()
-
-        # Step 2: Create ORC dataset
+        # Step 1: Create ORC dataset
         self.ocr_labels, self.max_label_len, self.ocr_img_paths = (
             self._split_bounding_boxes(
                 self.src_img_paths,
@@ -377,8 +366,9 @@ class OCRDataProcessor(DataLoader):
                 self.save_ocr_data_dir,
             )
         )
+        print("Complete converting data to CRNN format.")
 
-        # Step 3: Create OCR vocabulary
+        # Step 2: Create OCR vocabulary
         self.ocr_vocab, self.ocr_vocab_size = self._build_vocabulary(
             self.ocr_labels, self.save_ocr_data_dir
         )
@@ -417,13 +407,13 @@ class OCRDataProcessor(DataLoader):
                 ocr_labels.append(label)
                 # Update max_label_len
                 if len(label) > max_label_len:
-                    max_label_len = label
+                    max_label_len = len(label)
 
                 full_label = new_img_path + "\t" + label
                 full_labels.append(full_label)  # Append label to the list
                 count += 1
 
-        print(f"Created {count} images")
+        print(f"Created {count} images and saved to: {save_dir}")
 
         # Write labels to a text file
         with open(os.path.join(save_dir, "labels.txt"), "w") as f:
@@ -432,7 +422,7 @@ class OCRDataProcessor(DataLoader):
 
         return ocr_labels, max_label_len, ocr_img_paths
 
-    def _build_vocabulary(self, labels, save_voceb_dir):
+    def _build_vocabulary(self, labels: list[str], save_voceb_dir):
         blank_char = "-"
         vocab = {blank_char: 0}
 
@@ -460,3 +450,15 @@ class OCRDataProcessor(DataLoader):
         print(f"Build vocabulary successfully. Vocab size = {vocab_size}")
 
         return vocab, vocab_size
+
+    def encoder(self, label, vocab: dict, max_label_len):
+        encoded_label = torch.tensor([vocab[char] for char in label], dtype=torch.int32)
+        label_len = len(encoded_label)
+        padded_label = torch.nn.functional.pad(
+            encoded_label,  # Input tensor
+            (0, max_label_len - label),  # (padding_left, padding_right)
+            value=0,  # Padding value
+        )
+        label_len = torch.tensor(label_len, dtype=torch.int32)
+
+        return padded_label, label_len
