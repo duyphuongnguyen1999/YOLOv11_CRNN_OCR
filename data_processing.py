@@ -7,19 +7,20 @@ from PIL import Image
 import xml.etree.ElementTree as ET
 from sklearn.model_selection import train_test_split
 from config import DataProcessorConfig
+from utils import build_vocabulary
 
 
 class DataProcessor:
     def __init__(self, config: DataProcessorConfig):
         self.config = config
-        self.data_loader = DataLoader(config=config)
+        self.data_loader = DataExtractor(config=config)
         self.yolo_data_processor = YOLODataProcessor(config)
         self.ocr_data_processor = OCRDataProcessor(config)
 
 
-class DataLoader:
+class DataExtractor:
     """
-    A class to handle data loading, transformation, and saving for object detection datasets.
+    A class to extract bounding boxs and labels from raw data.
 
     Attributes:
         dataset_root_dir (str): The root directory containing the XML and image files.
@@ -171,7 +172,7 @@ class DataLoader:
         ]
 
 
-class YOLODataProcessor(DataLoader):
+class YOLODataProcessor(DataExtractor):
     def __init__(self, config: DataProcessorConfig):
         super().__init__(config)
         self.save_yolo_data_dir = self.config.save_yolo_data_dir
@@ -344,7 +345,7 @@ class YOLODataProcessor(DataLoader):
         return yolo_yaml_path, train_data, val_data, test_data
 
 
-class OCRDataProcessor(DataLoader):
+class OCRDataProcessor(DataExtractor):
     def __init__(self, config: DataProcessorConfig):
         super().__init__(config)
         self.save_ocr_data_dir = self.config.save_ocr_data_dir
@@ -369,7 +370,7 @@ class OCRDataProcessor(DataLoader):
         print("Complete converting data to CRNN format.")
 
         # Step 2: Create OCR vocabulary
-        self.ocr_vocab, self.ocr_vocab_size = self._build_vocabulary(
+        self.ocr_vocab, self.ocr_vocab_size = build_vocabulary(
             self.ocr_labels, self.save_ocr_data_dir
         )
 
@@ -421,44 +422,3 @@ class OCRDataProcessor(DataLoader):
                 f.write(f"{full_label}\n")
 
         return ocr_labels, max_label_len, ocr_img_paths
-
-    def _build_vocabulary(self, labels: list[str], save_voceb_dir):
-        blank_char = "-"
-        vocab = {blank_char: 0}
-
-        index = 1
-
-        unique_letters = set()
-
-        # Iterate through all label in labels
-        for label in labels:
-            # Split label into letter
-            label_letters = list(label.lower())
-            unique_letters.update(label_letters)
-
-        for letter in sorted(unique_letters):
-            vocab[letter] = index
-            index += 1
-
-        vocab_size = len(vocab)
-
-        # Write vocabulary into a text file
-        with open(os.path.join(save_voceb_dir, "ocr_vocab.txt"), "w") as f:
-            for letter, index in vocab.items():
-                f.write(f"{index}\t{letter}\n")
-
-        print(f"Build vocabulary successfully. Vocab size = {vocab_size}")
-
-        return vocab, vocab_size
-
-    def encoder(self, label, vocab: dict, max_label_len):
-        encoded_label = torch.tensor([vocab[char] for char in label], dtype=torch.int32)
-        label_len = len(encoded_label)
-        padded_label = torch.nn.functional.pad(
-            encoded_label,  # Input tensor
-            (0, max_label_len - label),  # (padding_left, padding_right)
-            value=0,  # Padding value
-        )
-        label_len = torch.tensor(label_len, dtype=torch.int32)
-
-        return padded_label, label_len
