@@ -88,7 +88,4 @@ def decode(encoded_sequences, idx_to_char, blank_char="-", show_result=False):
             label_decoder(sequence, idx_to_char, blank_char, show_result)
         )
 
-    if show_result:
-        print(f"Decoded: From {encoded_sequences} to {decode_sequences}")
-
     return decode_sequences
