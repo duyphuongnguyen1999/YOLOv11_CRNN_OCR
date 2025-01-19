@@ -1,6 +1,7 @@
 import os
 from ultralytics import YOLO
-from config import DetectorConfig
+from config import DetectorConfig, DataProcessorConfig
+from data_processor import DataProcessor
 
 
 class Detector:
@@ -41,3 +42,14 @@ class Detector:
         print("Start evaluation pipeline...")
         self.metrices = self.model.val()
         print("Evaluation complete")
+
+
+if __name__ == "__main__":
+    # Run DataProcessor pipeline
+    data_processor_config = DataProcessorConfig()
+    processor = DataProcessor(
+        config=data_processor_config, run_ocr_data_processor=False
+    )
+    # Run training and evaluating pipeline
+    detector_config = DetectorConfig()
+    detector = Detector(detector_config)
