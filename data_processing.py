@@ -1,21 +1,39 @@
 import os
 import shutil
 import yaml
-import torch
 import numpy as np
-from PIL import Image
 import xml.etree.ElementTree as ET
+from typing import Optional
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
 from sklearn.model_selection import train_test_split
 from config import DataProcessorConfig
-from utils import build_vocabulary
+from utils import build_vocabulary, encoder
 
 
 class DataProcessor:
-    def __init__(self, config: DataProcessorConfig):
-        self.config = config
-        self.data_loader = DataExtractor(config=config)
-        self.yolo_data_processor = YOLODataProcessor(config)
-        self.ocr_data_processor = OCRDataProcessor(config)
+    def __init__(
+        self,
+        config: DataProcessorConfig,
+        run_yolo_data_processor: bool = True,
+        run_ocr_data_processor: bool = True,
+    ):
+        """
+        DataProcessor handles YOLO and OCR data processors based on configuration.
+
+        Args:
+            config (DataProcessorConfig): Configuration for the data processors.
+            run_yolo_data_processor (bool): Whether to initialize YOLODataProcessor.
+            run_ocr_data_processor (bool): Whether to initialize OCRDataProcessor.
+        """
+        self.config: DataProcessorConfig = config
+        self.yolo_data_processor: Optional[YOLODataProcessor] = None
+        self.ocr_data_processor: Optional[OCRDataProcessor] = None
+
+        if run_yolo_data_processor:
+            self.yolo_data_processor = YOLODataProcessor(config)
+        if run_ocr_data_processor:
+            self.ocr_data_processor = OCRDataProcessor(config)
 
 
 class DataExtractor:
@@ -176,9 +194,9 @@ class YOLODataProcessor(DataExtractor):
     def __init__(self, config: DataProcessorConfig):
         super().__init__(config)
         self.save_yolo_data_dir = self.config.save_yolo_data_dir
-        self.val_size = self.config.val_size
-        self.test_size = self.config.test_size
-        self.is_shuffle = self.config.is_shuffle
+        self.val_size = self.config.yolo_val_size
+        self.test_size = self.config.yolo_test_size
+        self.is_shuffle = self.config.yolo_is_shuffle
         self.run_pipeline()
 
     def run_pipeline(self):
@@ -198,7 +216,7 @@ class YOLODataProcessor(DataExtractor):
             self._train_val_test_split(self.yolo_data, self.config)
         )
         print(
-            "Complete converting data to YOLO format."
+            "Complete converting data to YOLO format. "
             f"Data saved to: {self.config.save_yolo_data_dir}"
         )
 
@@ -311,15 +329,15 @@ class YOLODataProcessor(DataExtractor):
         """
         train_data, test_data = train_test_split(
             yolo_data,
-            test_size=config.val_size,
+            test_size=config.yolo_val_size,
             random_state=config.random_seed,
-            shuffle=config.is_shuffle,
+            shuffle=config.yolo_is_shuffle,
         )
         test_data, val_data = train_test_split(
             test_data,
-            test_size=config.test_size,
+            test_size=config.yolo_test_size,
             random_state=config.random_seed,
-            shuffle=config.is_shuffle,
+            shuffle=config.yolo_is_shuffle,
         )
 
         save_train_dir = os.path.join(config.save_yolo_data_dir, "train")
@@ -343,6 +361,33 @@ class YOLODataProcessor(DataExtractor):
             yaml.dump(data_yaml, f, default_flow_style=False)
 
         return yolo_yaml_path, train_data, val_data, test_data
+
+
+class TextRecognitionDataset(Dataset):
+    def __init__(self, x, y, char_to_idx, max_label_len, encoder=None, transforms=None):
+        self.transforms = transforms
+        self.img_paths = x
+        self.labels = y
+        self.char_to_idx = char_to_idx
+        self.max_label_len = max_label_len
+        self.encoder = encoder
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, index):
+        label = self.labels[index]
+        img_path = self.img_paths[index]
+        img = Image.open(img_path).convert("RGB")
+
+        if self.transforms:
+            img = self.transforms(img)
+
+        if self.encoder:
+            encoded_label, label_len = self.encoder(
+                label, self.char_to_idx, self.max_label_len
+            )
+        return img, encoded_label, label_len
 
 
 class OCRDataProcessor(DataExtractor):
@@ -370,8 +415,73 @@ class OCRDataProcessor(DataExtractor):
         print("Complete converting data to CRNN format.")
 
         # Step 2: Create OCR vocabulary
-        self.ocr_vocab, self.ocr_vocab_size = build_vocabulary(
+        self.char_to_idx_vocab, self.ocr_vocab_size = build_vocabulary(
             self.ocr_labels, self.save_ocr_data_dir
+        )
+        self.idx_to_char_vocab = {
+            idx: char for char, idx in self.char_to_idx_vocab.items()
+        }
+
+        # Step 3: Train - Val - Test split
+        x_train, x_val, y_train, y_val = train_test_split(
+            self.ocr_img_paths,
+            self.ocr_labels,
+            test_size=self.config.ocr_val_size,
+            random_state=self.config.random_seed,
+            shuffle=self.config.ocr_is_shuffle,
+        )
+        x_train, x_test, y_train, y_test = train_test_split(
+            x_train,
+            y_train,
+            test_size=self.config.ocr_test_size,
+            random_state=self.config.random_seed,
+            shuffle=self.config.ocr_is_shuffle,
+        )
+
+        # Build TextRecognitionDataset
+        train_dataset = TextRecognitionDataset(
+            x_train,
+            y_train,
+            char_to_idx=self.char_to_idx_vocab,
+            max_label_len=self.max_label_len,
+            encoder=encoder,
+            transforms=self.config.ocr_data_transforms["train"],
+        )
+        val_dataset = TextRecognitionDataset(
+            x_val,
+            y_val,
+            char_to_idx=self.char_to_idx_vocab,
+            max_label_len=self.max_label_len,
+            encoder=encoder,
+            transforms=self.config.ocr_data_transforms["val"],
+        )
+        test_dataset = TextRecognitionDataset(
+            x_test,
+            y_test,
+            char_to_idx=self.char_to_idx_vocab,
+            max_label_len=self.max_label_len,
+            encoder=encoder,
+            transforms=self.config.ocr_data_transforms["val"],
+        )
+
+        # Build DataLoader
+        self.train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.config.ocr_train_batch_size,
+            shuffle=True,
+            num_workers=0,
+        )
+        self.val_loader = DataLoader(
+            val_dataset,
+            batch_size=self.config.ocr_test_batch_size,
+            shuffle=False,
+            num_workers=0,
+        )
+        self.test_loader = DataLoader(
+            test_dataset,
+            batch_size=self.config.ocr_test_batch_size,
+            shuffle=False,
+            num_workers=0,
         )
 
     def _split_bounding_boxes(self, img_paths, img_labels, bboxes, save_dir):
@@ -422,3 +532,8 @@ class OCRDataProcessor(DataExtractor):
                 f.write(f"{full_label}\n")
 
         return ocr_labels, max_label_len, ocr_img_paths
+
+
+if __name__ == "__main__":
+    data_processor_config = DataProcessorConfig()
+    data_processor = DataProcessor(config=data_processor_config)
